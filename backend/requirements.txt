@@ -1,0 +1,36 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+
+# Database
+sqlalchemy==2.0.36
+aiosqlite==0.20.0
+
+# Validation
+pydantic==2.10.3
+pydantic-settings==2.7.0
+
+# Async
+anyio==4.7.0
+
+# Transcription pipeline
+easytranscriber==0.2.0
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Diarization (kräver HF-token för pyannote gated models)
+pyannote.audio==3.3.2
+
+# Audio processing
+ffmpeg-python==0.2.0
+imageio-ffmpeg>=0.5.1   # buntar eget ffmpeg-binär, undviker PATH-beroende på Windows
+soundfile==0.12.1
+librosa==0.10.2
+
+# Utilities
+python-dotenv==1.0.1
+httpx==0.28.1
+
+#Installera separat med pip install
+# torch torchaudio --index-url https://download.pytorch.org/whl/cu128

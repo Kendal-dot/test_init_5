@@ -1,0 +1,57 @@
+version: "3.9"
+
+# ============================================================
+# Lokal mötestranskriberingsplattform
+# Kör: docker compose up --build
+#
+# GPU-krav: NVIDIA Container Toolkit måste vara installerat.
+# Se docs/setup.md för instruktioner.
+# ============================================================
+
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: transcriber-backend
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    volumes:
+      # Källkod (för hot-reload i dev)
+      - ../backend:/app
+      # Persistent lagring utanför containern
+      - transcriber_storage:/app/storage
+      # Modellcache: undviker nedladdning vid varje omstart
+      - transcriber_models:/app/storage/models_cache
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: transcriber-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  transcriber_storage:
+    driver: local
+  transcriber_models:
+    driver: local
