@@ -201,24 +201,17 @@ class SpeakerTracker:
             self._active_speaker = self._next_anonymous()
         return self._active_speaker
 
-    def process(self, text: str) -> tuple[str, str]:
+    def process(self, text: str) -> tuple[str, str, bool]:
         """
-        Parsar text, identifierar talare och returnerar (rengjord_text, talarnamn).
+        Parsar text, identifierar talare och returnerar
+        (rengjord_text, talarnamn, hittade_nyckelord).
 
-        Ordning:
-        1. Extrahera potentiellt namn ur strukturella fraser + fonetisk match
-           mot registrerade deltagare (hanterar stavningsvarianter)
-        2. Generiska start-mönster för okända namn ("Nu talar Björn")
-        3. Avslutningsfraser ("Klart slut")
+        hittade_nyckelord = True om ett explicit talarkommando hittades i texten.
         """
         cleaned = text
         speaker_event = None
 
         # --- Steg 1: Deltagarbaserad fonetisk matchning ---
-        # Prova varje extraktionsmönster, hitta potentiellt namn, matcha fonetiskt.
-        # Vi tar bort BARA den specifika matchade frasen (count=1) för att inte
-        # råka ta bort exv "vara här" i "...det är kul att vara här" om vi
-        # redan matchat "Kendal här" i början av chunken.
         for extractor in _NAME_EXTRACTORS:
             m = extractor.search(cleaned)
             if not m:
@@ -227,7 +220,6 @@ class SpeakerTracker:
             canonical = self._try_participant_match(candidate)
             if canonical:
                 speaker_event = ("start", canonical)
-                # Ta bort EXAKT den matchade frasen (start/end position)
                 cleaned = (cleaned[:m.start()] + cleaned[m.end():]).strip(" ,.-")
                 logger.debug(
                     f"Fonetisk match: '{candidate}' → '{canonical}' "
@@ -241,7 +233,6 @@ class SpeakerTracker:
                 m = pattern.search(cleaned)
                 if m:
                     raw = m.group(1)
-                    # Kolla ändå om det fonetiskt matchar en deltagare
                     canonical = self._try_participant_match(raw)
                     name = canonical if canonical else self._resolve_unknown_name(raw)
                     speaker_event = ("start", name)
@@ -258,6 +249,7 @@ class SpeakerTracker:
                 break
 
         # --- Uppdatera state ---
+        found_keyword = speaker_event is not None
         if speaker_event:
             kind, name = speaker_event
             if kind == "start":
@@ -267,7 +259,7 @@ class SpeakerTracker:
                 logger.info(f"Talarbyte: '{self._active_speaker}' avslutar")
                 self._active_speaker = None
 
-        return cleaned, self.current_speaker()
+        return cleaned, self.current_speaker(), found_keyword
 
 
 # ---------------------------------------------------------------------------
@@ -365,10 +357,24 @@ class LiveTranscriptionAdapter:
     def __init__(self) -> None:
         self._chunk_start = 0.0
         self._speaker_tracker = SpeakerTracker()
+        self._voice_profiles: list[dict] = []
+        self._last_voice_speaker: str | None = None
 
     def set_participants(self, names: list[str]) -> None:
         """Registrera deltagarnamn – anropas från WebSocket-routen vid init-meddelande."""
         self._speaker_tracker.set_participants(names)
+
+    def set_voice_profiles(self, profiles: list[dict]) -> None:
+        """
+        Sätt röstprofiler för automatisk identifiering.
+        profiles: lista av {"name": str, "embedding": list[float]}
+        """
+        self._voice_profiles = profiles
+        if profiles:
+            logger.info(
+                f"Live-session: {len(profiles)} röstprofiler laddade "
+                f"({', '.join(p['name'] for p in profiles)})"
+            )
 
     async def transcribe_chunk(self, audio_bytes: bytes, chunk_index: int) -> dict:
         """Transkriberar en audio-chunk asynkront (blockerar inte event loop)."""
@@ -376,6 +382,27 @@ class LiveTranscriptionAdapter:
         return await loop.run_in_executor(
             None, self._transcribe_sync, audio_bytes, chunk_index
         )
+
+    def _identify_speaker_by_voice(self, audio_array: np.ndarray) -> str | None:
+        """
+        Matcha en audio-chunk mot sparade röstprofiler.
+        Returnerar det matchade namnet, eller None.
+        """
+        if not self._voice_profiles:
+            return None
+        try:
+            from app.pipeline.speaker_embedding import (
+                _extract_embedding_from_array,
+                match_embedding_to_profiles,
+            )
+            embedding = _extract_embedding_from_array(audio_array)
+            name, score = match_embedding_to_profiles(embedding, self._voice_profiles)
+            if name:
+                logger.debug(f"Röstmatch i live-chunk: '{name}' (score={score:.3f})")
+            return name
+        except Exception as exc:
+            logger.debug(f"Röstidentifiering misslyckades: {exc}")
+            return None
 
     def _transcribe_sync(self, audio_bytes: bytes, chunk_index: int) -> dict:
         model, processor = _get_model()
@@ -391,10 +418,8 @@ class LiveTranscriptionAdapter:
         self._chunk_start += chunk_duration
 
         # Steg 2: tystnadsdetektion via RMS
-        # Whisper hallucinerar fraser ("Tack.", "Varsågod.") på tyst audio.
-        # RMS för normaliserat float32 audio: tyst < 0.01, tal > 0.02–0.10
         rms = float(np.sqrt(np.mean(audio_array ** 2)))
-        silence_threshold = 0.01  # Justerbar – höj om hallucination kvarstår
+        silence_threshold = 0.01
 
         if rms < silence_threshold:
             logger.debug(
@@ -405,13 +430,18 @@ class LiveTranscriptionAdapter:
                 "start": round(chunk_start, 2),
                 "end": round(chunk_start + chunk_duration, 2),
                 "text": "",
-                "speaker": "Talare 1",
+                "speaker": self._last_voice_speaker or "Talare 1",
                 "silent": True,
             }
 
-        # Steg 3: feature extraction + inferens
+        # Steg 3: röstbaserad talaridentifiering (ECAPA-TDNN)
+        voice_speaker = self._identify_speaker_by_voice(audio_array)
+        if voice_speaker:
+            self._last_voice_speaker = voice_speaker
+
+        # Steg 4: feature extraction + Whisper-inferens
         device = next(model.parameters()).device
-        dtype = next(model.parameters()).dtype  # float16 på GPU (laddad explicit)
+        dtype = next(model.parameters()).dtype
 
         inputs = processor(
             audio_array,
@@ -429,8 +459,22 @@ class LiveTranscriptionAdapter:
         raw_text = processor.batch_decode(predicted_ids, skip_special_tokens=True)[0].strip()
         logger.debug(f"Chunk #{chunk_index} ({chunk_duration:.1f}s) RMS={rms:.4f}: '{raw_text[:60]}'")
 
-        # Parsa nyckelord och identifiera talare
-        text, speaker = self._speaker_tracker.process(raw_text)
+        # Steg 5: nyckelordsbaserad identifiering (override / fallback)
+        text, keyword_speaker, found_keyword = self._speaker_tracker.process(raw_text)
+
+        # Prioritet:
+        # 1. Nyckelord hittade ("Nu talar Kendal") → använd det explicita namnet
+        # 2. Röstprofil matchade denna chunk → använd röst-identifierat namn
+        # 3. Senaste röstmatch (samma person fortsätter tala)
+        # 4. Nyckelordstrackerns default (anonym "Talare N")
+        if found_keyword:
+            speaker = keyword_speaker
+        elif voice_speaker:
+            speaker = voice_speaker
+        elif self._last_voice_speaker:
+            speaker = self._last_voice_speaker
+        else:
+            speaker = keyword_speaker
 
         return {
             "chunk": chunk_index,

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     # Storage
     storage_dir: Path = Path("/app/storage")
     uploads_dir: Path = Path("/app/storage/uploads")
+    exports_dir: Path | None = None  # Härleds från storage_dir om inte satt
     models_cache_dir: Path = Path("/app/storage/models_cache")
 
     # Database – stöd för SQLite och Postgres via samma variabel
@@ -40,9 +41,16 @@ class Settings(BaseSettings):
     # Job queue
     max_concurrent_jobs: int = 1
 
+    @property
+    def resolved_exports_dir(self) -> Path:
+        """Exports-katalog – härleds från storage_dir om inte explicit satt."""
+        if self.exports_dir is not None:
+            return self.exports_dir
+        return Path(self.storage_dir) / "exports"
+
     def ensure_dirs(self) -> None:
         """Skapa nödvändiga lagringskataloger om de saknas."""
-        for d in [self.storage_dir, self.uploads_dir, self.models_cache_dir]:
+        for d in [self.storage_dir, self.uploads_dir, self.resolved_exports_dir, self.models_cache_dir]:
             Path(d).mkdir(parents=True, exist_ok=True)
         # Skapa db-katalog baserat på SQLite-sökväg
         if "sqlite" in self.database_url:

@@ -130,6 +130,57 @@ class DiarizationService:
         return segments
 
 
+def identify_speakers_by_profile(
+    wav_path: str,
+    diarization_segments: list[DiarizationSegment],
+    label_map: dict[str, str],
+    profiles: list[dict],
+) -> dict[str, str]:
+    """
+    Matcha diarization-kluster mot sparade röstprofiler.
+
+    Extraherar en embedding per unik talare (SPEAKER_XX) och jämför
+    mot alla profiler. Om en match hittas ersätts "Talare N" med
+    det registrerade namnet.
+
+    Returnerar en uppdaterad label_map: {"SPEAKER_00": "Kendal", "SPEAKER_01": "Talare 2"}.
+    """
+    if not profiles or not diarization_segments:
+        return label_map
+
+    from app.pipeline.speaker_embedding import (
+        extract_cluster_embedding,
+        match_embedding_to_profiles,
+    )
+
+    unique_speakers = set(s.speaker_id for s in diarization_segments)
+    updated_map = dict(label_map)
+    used_profile_names: set[str] = set()
+
+    for spk_id in unique_speakers:
+        cluster_segs = [
+            {"start": s.start, "end": s.end}
+            for s in diarization_segments
+            if s.speaker_id == spk_id
+        ]
+        try:
+            embedding = extract_cluster_embedding(wav_path, cluster_segs)
+            available_profiles = [
+                p for p in profiles if p["name"] not in used_profile_names
+            ]
+            name, score = match_embedding_to_profiles(embedding, available_profiles)
+            if name:
+                updated_map[spk_id] = name
+                used_profile_names.add(name)
+                logger.info(
+                    f"Identifierad: {spk_id} → '{name}' (score={score:.3f})"
+                )
+        except Exception as exc:
+            logger.warning(f"Kunde inte extrahera embedding för {spk_id}: {exc}")
+
+    return updated_map
+
+
 # Singleton för att undvika att ladda om modellen
 _diarization_service: DiarizationService | None = None
 

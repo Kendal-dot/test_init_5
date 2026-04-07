@@ -59,6 +59,16 @@ async def live_transcribe(websocket: WebSocket):
     adapter = LiveTranscriptionAdapter()
     chunk_index = 0
 
+    # Ladda sparade röstprofiler vid anslutning
+    try:
+        from app.db.base import AsyncSessionLocal
+        from app.services.speaker_service import get_all_profiles_with_embeddings
+        async with AsyncSessionLocal() as session:
+            profiles = await get_all_profiles_with_embeddings(session)
+        adapter.set_voice_profiles(profiles)
+    except Exception as exc:
+        logger.warning(f"Kunde inte ladda röstprofiler för live-session: {exc}")
+
     try:
         while True:
             try:

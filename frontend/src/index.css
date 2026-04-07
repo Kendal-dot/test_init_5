@@ -198,6 +198,7 @@ dd { font-weight: 500; }
    Transcript
    =========================== */
 .transcript-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: .75rem; }
+.export-buttons { display: flex; gap: .5rem; }
 .speaker-filter { display: flex; gap: .4rem; flex-wrap: wrap; }
 .filter-btn { padding: .3rem .75rem; border-radius: 99px; border: 2px solid var(--color-border); background: white; font-size: .82rem; cursor: pointer; transition: all .15s; }
 .filter-btn:hover, .filter-btn.active { background: #eff6ff; border-color: var(--color-primary); color: var(--color-primary); }
@@ -316,3 +317,54 @@ mark { background: #fef08a; border-radius: 2px; padding: 0 2px; }
   animation: blink .8s step-end infinite;
 }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* ===========================
+   Speaker enrollment
+   =========================== */
+.enroll-card h3 { font-size: 1.1rem; margin-bottom: 1rem; }
+.enroll-name-row { margin-bottom: 1rem; }
+.enroll-label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: .35rem; color: var(--color-text-muted); }
+
+.enroll-text-card {
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+.enroll-text-card h4 { font-size: .9rem; margin-bottom: .75rem; color: var(--color-text-muted); }
+.enroll-text { font-size: .92rem; line-height: 1.8; white-space: pre-line; color: var(--color-text); }
+
+.enroll-controls { margin-bottom: 1rem; }
+
+.enroll-recording { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+.enroll-recording-status { display: flex; align-items: center; gap: .6rem; font-weight: 500; }
+
+.enroll-review { display: flex; flex-direction: column; gap: .75rem; }
+.enroll-review-info { display: flex; align-items: center; gap: .75rem; }
+.enroll-review-actions { display: flex; gap: .5rem; }
+
+.enroll-info { margin-top: .75rem; }
+
+.success-msg {
+  color: #15803d;
+  background: #dcfce7;
+  border-radius: var(--radius);
+  padding: .75rem 1rem;
+  margin-top: .75rem;
+  font-size: .9rem;
+}
+
+.speakers-list { display: flex; flex-direction: column; gap: .5rem; margin-top: .75rem; }
+.speaker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .75rem 1rem;
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+.speaker-item-info { display: flex; flex-direction: column; gap: .15rem; }
+.speaker-item-name { font-weight: 600; font-size: .95rem; }
+.speaker-item-meta { font-size: .8rem; color: var(--color-text-muted); }

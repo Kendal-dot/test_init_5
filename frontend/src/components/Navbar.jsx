@@ -28,6 +28,11 @@ export default function Navbar() {
             Live
           </NavLink>
         </li>
+        <li>
+          <NavLink to="/speakers" className={({ isActive }) => isActive ? 'active' : ''}>
+            Röstprofiler
+          </NavLink>
+        </li>
       </ul>
     </nav>
   )

@@ -39,5 +39,5 @@ async def get_db() -> AsyncSession:
 async def init_db() -> None:
     """Skapa alla tabeller om de inte finns. Ersätts av Alembic-migrationer senare."""
     async with engine.begin() as conn:
-        from app.db.models import meeting, transcript, segment  # noqa: F401
+        from app.db.models import meeting, transcript, segment, speaker_profile  # noqa: F401
         await conn.run_sync(Base.metadata.create_all)

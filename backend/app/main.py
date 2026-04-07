@@ -61,12 +61,13 @@ app.add_middleware(
 )
 
 # Routes
-from app.api.routes import upload, jobs, transcripts, search, live  # noqa: E402
+from app.api.routes import upload, jobs, transcripts, search, live, speakers  # noqa: E402
 
 app.include_router(upload.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(transcripts.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
+app.include_router(speakers.router, prefix="/api")
 app.include_router(live.router, prefix="/ws")
 
 

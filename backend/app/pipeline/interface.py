@@ -31,8 +31,15 @@ class TranscriptionPipeline(ABC):
     """Abstrakt bas för transkriberingspipelines."""
 
     @abstractmethod
-    async def transcribe(self, file_path: str) -> TranscriptionResult:
-        """Transkribera en ljudfil. Returnerar strukturerat resultat."""
+    async def transcribe(
+        self,
+        file_path: str,
+        speaker_profiles: list[dict] | None = None,
+    ) -> TranscriptionResult:
+        """
+        Transkribera en ljudfil. Returnerar strukturerat resultat.
+        speaker_profiles: lista av {"name": str, "embedding": list[float]}
+        """
         ...
 
     @abstractmethod

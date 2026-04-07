@@ -75,4 +75,23 @@ async def save_live_session(
         f"Live-session sparad: meeting_id={meeting.id}, "
         f"{len(segments)} segment, {duration:.0f}s"
     )
+
+    # Generera TXT + JSON-export automatiskt
+    try:
+        from app.services.transcript_service import save_export_files
+        save_export_files(
+            meeting_id=meeting.id,
+            filename=display_name,
+            duration=duration,
+            source_type="live",
+            created_at=now,
+            model_used="KBLab/kb-whisper-small",
+            segments=[
+                {"start": s.start, "end": s.end, "speaker": s.speaker, "text": s.text}
+                for s in body.segments
+            ],
+        )
+    except Exception as exc:
+        logger.warning(f"Kunde inte skapa exportfiler för live-session: {exc}")
+
     return meeting

@@ -3,6 +3,7 @@ Transkriptservice – sparar pipeline-resultat och hanterar redigering/export.
 """
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +19,151 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 
+def _format_timestamp(seconds: float) -> str:
+    """Formatera sekunder som HH:MM:SS."""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    if h > 0:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
+def generate_txt_export(
+    filename: str,
+    meeting_id: str,
+    duration: float | None,
+    source_type: str,
+    created_at: datetime,
+    model_used: str | None,
+    segments: list[dict],
+) -> str:
+    """
+    Generera ren TXT för vektordatabas-indexering.
+
+    Format:
+    ---
+    Möte: <filnamn>
+    Datum: 2026-04-07 14:30
+    Längd: 45:12
+    Källa: upload
+    Modell: KBLab/kb-whisper-small
+    Segment: 127
+    ---
+
+    [00:00 - 00:15] Kendal:
+    Vi behöver diskutera budgeten för nästa kvartal.
+
+    [00:15 - 00:28] Anna:
+    Ja, jag tycker vi borde öka marknadsföringen.
+    """
+    lines = []
+
+    lines.append("---")
+    lines.append(f"Möte: {filename}")
+    lines.append(f"ID: {meeting_id}")
+    if created_at:
+        lines.append(f"Datum: {created_at.strftime('%Y-%m-%d %H:%M')}")
+    if duration:
+        lines.append(f"Längd: {_format_timestamp(duration)}")
+    lines.append(f"Källa: {source_type}")
+    if model_used:
+        lines.append(f"Modell: {model_used}")
+    lines.append(f"Segment: {len(segments)}")
+    lines.append("---")
+    lines.append("")
+
+    for seg in segments:
+        start = _format_timestamp(seg["start"])
+        end = _format_timestamp(seg["end"])
+        speaker = seg.get("speaker") or "Okänd"
+        text = seg.get("text", "").strip()
+
+        lines.append(f"[{start} - {end}] {speaker}:")
+        lines.append(text)
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def generate_json_export(
+    filename: str,
+    meeting_id: str,
+    duration: float | None,
+    source_type: str,
+    created_at: datetime,
+    model_used: str | None,
+    segments: list[dict],
+) -> dict:
+    """
+    Generera strukturerad JSON för vektordatabas-indexering.
+
+    Varje segment är ett eget objekt med all metadata – redo att
+    chunkas och embedda direkt utan extra parsing.
+    """
+    return {
+        "meeting_id": meeting_id,
+        "title": filename,
+        "date": created_at.strftime("%Y-%m-%d %H:%M") if created_at else None,
+        "duration_seconds": duration,
+        "source_type": source_type,
+        "model": model_used,
+        "total_segments": len(segments),
+        "segments": [
+            {
+                "index": i,
+                "start": seg["start"],
+                "end": seg["end"],
+                "start_formatted": _format_timestamp(seg["start"]),
+                "end_formatted": _format_timestamp(seg["end"]),
+                "speaker": seg.get("speaker") or "Okänd",
+                "text": seg.get("text", "").strip(),
+            }
+            for i, seg in enumerate(segments)
+        ],
+    }
+
+
+def save_export_files(
+    meeting_id: str,
+    filename: str,
+    duration: float | None,
+    source_type: str,
+    created_at: datetime,
+    model_used: str | None,
+    segments: list[dict],
+) -> None:
+    """Spara både TXT och JSON till exports-katalogen."""
+    import json as json_lib
+
+    exports_dir = Path(settings.resolved_exports_dir)
+    exports_dir.mkdir(parents=True, exist_ok=True)
+
+    args = dict(
+        filename=filename,
+        meeting_id=meeting_id,
+        duration=duration,
+        source_type=source_type,
+        created_at=created_at,
+        model_used=model_used,
+        segments=segments,
+    )
+
+    # TXT
+    txt_path = exports_dir / f"transcript_{meeting_id}.txt"
+    txt_path.write_text(generate_txt_export(**args), encoding="utf-8")
+    logger.info(f"TXT-export sparad: {txt_path}")
+
+    # JSON
+    json_path = exports_dir / f"transcript_{meeting_id}.json"
+    json_data = generate_json_export(**args)
+    json_path.write_text(
+        json_lib.dumps(json_data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    logger.info(f"JSON-export sparad: {json_path}")
+
+
 async def save_transcription_result(
     session: AsyncSession,
     meeting_id: str,
@@ -29,7 +175,7 @@ async def save_transcription_result(
     segment_repo = SegmentRepository(session)
 
     # Uppdatera mötesstatus och metadata
-    await meeting_repo.update_after_transcription(
+    meeting = await meeting_repo.update_after_transcription(
         meeting_id,
         duration=result.duration,
         model_used=result.model_used,
@@ -61,6 +207,24 @@ async def save_transcription_result(
     logger.info(
         f"Sparade {len(segments)} segment för meeting_id={meeting_id}"
     )
+
+    # Generera TXT + JSON-export automatiskt
+    try:
+        save_export_files(
+            meeting_id=meeting_id,
+            filename=meeting.original_filename if meeting else meeting_id,
+            duration=result.duration,
+            source_type=meeting.source_type if meeting else "upload",
+            created_at=meeting.created_at if meeting else datetime.now(timezone.utc),
+            model_used=result.model_used,
+            segments=[
+                {"start": seg.start, "end": seg.end, "speaker": seg.speaker, "text": seg.text}
+                for seg in result.segments
+            ],
+        )
+    except Exception as exc:
+        logger.warning(f"Kunde inte skapa exportfiler: {exc}")
+
     return transcript
 
 

@@ -45,7 +45,11 @@ class EasytranscriberAdapter(TranscriptionPipeline):
         except ImportError:
             return False
 
-    async def transcribe(self, file_path: str) -> TranscriptionResult:
+    async def transcribe(
+        self,
+        file_path: str,
+        speaker_profiles: list[dict] | None = None,
+    ) -> TranscriptionResult:
         """Kör fullständig transkriberingspipeline för en fil."""
         logger.info(f"Startar transkribering: {file_path}")
 
@@ -62,7 +66,7 @@ class EasytranscriberAdapter(TranscriptionPipeline):
                 None, self._run_pipeline, wav_path, tmpdir
             )
 
-            # Steg 3: Talaridentifiering
+            # Steg 3: Talaridentifiering via diarization
             speaker_map = {}
             diarization_segments = []
             if settings.diarization_enabled:
@@ -72,6 +76,19 @@ class EasytranscriberAdapter(TranscriptionPipeline):
                     )
                 except Exception as exc:
                     logger.warning(f"Diarization misslyckades, fortsätter utan: {exc}")
+
+            # Steg 3b: Matcha kluster mot sparade röstprofiler
+            if diarization_segments and speaker_profiles:
+                try:
+                    from app.pipeline.diarization import identify_speakers_by_profile
+                    speaker_map = await loop.run_in_executor(
+                        None,
+                        identify_speakers_by_profile,
+                        wav_path, diarization_segments, speaker_map, speaker_profiles,
+                    )
+                    logger.info("Röstprofiler matchade mot diarization-kluster")
+                except Exception as exc:
+                    logger.warning(f"Röstprofilmatchning misslyckades: {exc}")
 
         # Steg 4: Bygg resultat
         from app.pipeline.diarization import find_speaker_for_segment

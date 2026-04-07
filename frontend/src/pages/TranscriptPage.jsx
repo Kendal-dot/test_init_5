@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useTranscript } from '../hooks/useTranscript'
 import { useJob } from '../hooks/useJobs'
-import { exportTranscript } from '../services/api'
+import { exportTranscriptTxt, exportTranscriptJson } from '../services/api'
 import { formatTime } from '../utils/format'
 
 const SPEAKER_COLORS = [
@@ -134,12 +134,20 @@ export default function TranscriptPage() {
           ))}
         </div>
 
-        <button
-          className="btn btn-secondary"
-          onClick={() => exportTranscript(meetingId)}
-        >
-          Exportera JSON
-        </button>
+        <div className="export-buttons">
+          <button
+            className="btn btn-secondary"
+            onClick={() => exportTranscriptTxt(meetingId)}
+          >
+            Exportera TXT
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => exportTranscriptJson(meetingId)}
+          >
+            Exportera JSON
+          </button>
+        </div>
       </div>
 
       <div className="transcript-container">

@@ -76,6 +76,7 @@ async def create_upload_job(file: UploadFile) -> Meeting:
 async def _run_transcription_job(meeting_id: str) -> None:
     """Körs av jobbarbetaren. Hämtar pipeline-adapter och kör transkribering."""
     from app.pipeline.easytranscriber_adapter import EasytranscriberAdapter
+    from app.services.speaker_service import get_all_profiles_with_embeddings
     from app.services.transcript_service import save_transcription_result
 
     async with AsyncSessionLocal() as session:
@@ -88,9 +89,22 @@ async def _run_transcription_job(meeting_id: str) -> None:
         await session.commit()
         file_path = meeting.file_path
 
+    # Hämta sparade röstprofiler för speaker identification
+    speaker_profiles = []
+    try:
+        async with AsyncSessionLocal() as session:
+            speaker_profiles = await get_all_profiles_with_embeddings(session)
+        if speaker_profiles:
+            logger.info(f"Hittade {len(speaker_profiles)} röstprofiler för identifiering")
+    except Exception as exc:
+        logger.warning(f"Kunde inte hämta röstprofiler: {exc}")
+
     try:
         adapter = EasytranscriberAdapter()
-        result = await adapter.transcribe(file_path)
+        result = await adapter.transcribe(
+            file_path,
+            speaker_profiles=speaker_profiles or None,
+        )
 
         async with AsyncSessionLocal() as session:
             await save_transcription_result(session, meeting_id, result)

@@ -6,6 +6,7 @@ import JobDetailPage from './pages/JobDetailPage'
 import TranscriptPage from './pages/TranscriptPage'
 import SearchPage from './pages/SearchPage'
 import LivePage from './pages/LivePage'
+import SpeakersPage from './pages/SpeakersPage'
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="/transcript/:meetingId" element={<TranscriptPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/live" element={<LivePage />} />
+            <Route path="/speakers" element={<SpeakersPage />} />
           </Routes>
         </main>
       </div>
