@@ -10,7 +10,10 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 // Nytt block skapas om talaren byts ELLER om blocket är längre än detta
 const BLOCK_MAX_SECONDS = 30
 
-const WS_URL = (import.meta.env.VITE_WS_URL || 'ws://localhost:8000') + '/ws/live/transcribe'
+const WS_BASE = 'VITE_WS_URL' in import.meta.env
+  ? import.meta.env.VITE_WS_URL
+  : 'ws://localhost:8000'
+const WS_URL = (WS_BASE || `ws://${window.location.host}`) + '/ws/live/transcribe'
 // 3s chunks = ~4-5s latens totalt (3s inspelning + ~1s Whisper-inferens på GPU)
 // Kortare än 2s ger för lite kontext för bra transkribering
 const CHUNK_DURATION_MS = 3000
